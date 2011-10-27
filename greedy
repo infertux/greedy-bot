@@ -1,0 +1,9 @@
+#!/usr/bin/env ruby
+
+require 'lib/bot'
+
+STDOUT.sync = true
+
+bot = Bot.new
+bot.run!
+

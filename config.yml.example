@@ -1,0 +1,11 @@
+base_url: git@github.com:infertux
+username: infertux
+password: p455w0rd
+clean_branch: cleanup
+cache_dir: cache
+ssh_key_file: /Users/infertux/.ssh/id_rsa
+repositories:
+  - {name: project, branch: development}
+  - {name: lxc-tools, branch: master}
+  - {name: sysechk, branch: master}
+
