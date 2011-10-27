@@ -9,6 +9,8 @@
 
 begin
   require 'yaml'
+  require 'net/http'
+  require 'net/https'
 rescue
   puts $!
 end
@@ -19,7 +21,7 @@ class Bot
 
   def initialize
     @config = YAML.load_file("#{ROOT}/config.yml")
-    puts "Hi! This is GreedyBot, I'm up and ready to eat your code today."
+    puts "Hi! This is Greedy Bot, I'm up and ready to eat your code today."
   end
 
   def run!
@@ -35,6 +37,8 @@ class Bot
 
       update_repo repo
       clean_repo repo
+      push_cleanup_branch repo
+      send_pull_request repo
     end
   end
 
@@ -46,9 +50,9 @@ class Bot
     Dir.chdir @config['cache_dir']
     if File.directory? repo.path
        Dir.chdir repo.path
-       `git reset --hard`
+       `git reset --hard -q`
        `git clean -df`
-       `git checkout #{repo.branch}`
+       `git checkout -q #{repo.branch}`
        `git branch -D #{@config['clean_branch']}`
        `git pull -u origin #{repo.branch}`
     else
@@ -59,18 +63,59 @@ class Bot
   end
 
   def clean_repo repo
-    Dir.chdir ROOT
-    raise 'WTF?' unless File.directory? repo.path
     Dir.chdir repo.path
-    `git checkout #{@config['clean_branch']}`
+    `git checkout -q #{@config['clean_branch']}`
     `find . -type f -not -wholename './.git*' -print0 | xargs -0 file -I | grep -v 'charset=binary' | cut -d: -f1`.each do |file|
       `sed -i '' -e 's/[ \t]*$//' #{file}`
     end
-    # puts `git diff`
+    `git commit -am 'Cleanup trailing whitespaces'`
+  end
+
+  def push_cleanup_branch repo
+    Dir.chdir repo.path
+    `git push origin #{@config['clean_branch']}`
+  end
+
+  def send_pull_request repo
+    title = "Cleanup trailing whitespaces"
+    body = <<-BLAH.split("\n").map(&:strip).join(' \\n')
+      Hi! I'm the Greedy Bot and I'm starving!
+      I ate all trailing whitespaces in your repo and offer you a clean code.
+      Please double check I didn't eat useful stuff and merge this pull request if you fancy it.
+      In the unlikely case I'd have done something nasty, please send me a pull request to fix me ;).
+
+      Cheers, the Greedy Bot.
+    BLAH
+
+    path = "/repos/#{github_user_from_url @config['base_url']}/#{repo.name}/pulls"
+    payload = <<-JSON.strip
+      {
+        "title": "#{title}",
+        "body": "#{body}",
+        "head": "#{@config['clean_branch']}",
+        "base": "#{repo.branch}"
+      }
+    JSON
+
+    post = Net::HTTP::Post.new(path, initheader = {'Content-Type' =>'application/json'})
+    post.basic_auth @config['username'], @config['password']
+    post.body = payload
+
+    req = Net::HTTP.new('api.github.com', 443)
+    req.use_ssl = true
+    response = req.request(post)
+
+    unless response.code == 201
+      raise "Oops #{response.code} - #{response.message}: #{response.body}"
+    end
   end
 
   def repository params
     Repository.new params.merge(:config => @config)
+  end
+
+  def github_user_from_url url
+    url.split(':').last
   end
 
 end
