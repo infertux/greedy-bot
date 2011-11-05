@@ -3,7 +3,11 @@ username: infertux
 password: p455w0rd
 clean_branch: cleanup
 cache_dir: cache
-ssh_key_file: /Users/infertux/.ssh/id_rsa
+upload: true
+exclude_paths:
+  - ./public/*
+  - ./vendor/*
+  - **/lib**/*.js
 repositories:
   - {name: project, branch: development}
   - {name: lxc-tools, branch: master}

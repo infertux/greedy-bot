@@ -18,6 +18,7 @@ end
 ROOT = File.expand_path(File.dirname(__FILE__) + '/../')
 
 class Bot
+  VERSION = '0.2'
 
   def initialize
     @config = YAML.load_file("#{ROOT}/config.yml")
@@ -35,12 +36,23 @@ class Bot
       )
       puts "Processing repo #{repo}..."
 
+      puts "Syncing..."
       update_repo repo
+      puts "Cleaning up..."
       clean_repo repo
-      push_cleanup_branch repo
-      send_pull_request repo
+
+      if @config['upload']
+        puts "Uploading..."
+        push_cleanup_branch repo
+        send_pull_request repo
+      else
+        puts "Don't upload as requested, you may want to check out in #{repo.path} now."
+      end
+
+      puts "#{repo} done."
     end
   end
+
 
   private
 
@@ -54,7 +66,7 @@ class Bot
        `git clean -df`
        `git checkout -q #{repo.branch}`
        `git branch -D #{@config['clean_branch']}`
-       `git pull -u origin #{repo.branch}`
+       `git pull -qu origin #{repo.branch}`
     else
        `git clone -b #{repo.branch} #{repo.location}`
        Dir.chdir repo.path
@@ -65,9 +77,16 @@ class Bot
   def clean_repo repo
     Dir.chdir repo.path
     `git checkout -q #{@config['clean_branch']}`
-    `find . -type f -not -wholename './.git*' -print0 | xargs -0 file -I | grep -v 'charset=binary' | cut -d: -f1`.each do |file|
+
+    find = <<-CMD.split("\n").map(&:strip).join(' ')
+      find . -type f -not -wholename './.git*'
+      #{@config['exclude_paths'].map{|path| "-not -wholename '#{path}' "}}
+      -print0 | xargs -0 file -I | grep -v 'charset=binary' | cut -d: -f1
+    CMD
+    `#{find}`.each do |file|
       `sed -i '' -e 's/[ \t]*$//' #{file}`
     end
+
     `git commit -am 'Cleanup trailing whitespaces'`
   end
 
@@ -81,10 +100,11 @@ class Bot
     body = <<-BLAH.split("\n").map(&:strip).join(' \\n')
       Hi! I'm the Greedy Bot and I'm starving!
       I ate all trailing whitespaces in your repo and offer you a clean code.
+      I also added a newline at the end of files that didn't have one yet.
       Please double check I didn't eat useful stuff and merge this pull request if you fancy it.
       In the unlikely case I'd have done something nasty, please send me a pull request to fix me ;).
 
-      Cheers, the Greedy Bot.
+      Cheers, the Greedy Bot v#{VERSION}.
     BLAH
 
     path = "/repos/#{github_user_from_url @config['base_url']}/#{repo.name}/pulls"
